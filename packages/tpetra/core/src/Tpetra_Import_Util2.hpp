@@ -57,6 +57,7 @@
 #include "Tpetra_Details_MpiTypeTraits.hpp"
 #include "Tpetra_Vector.hpp"
 #include "Kokkos_DualView.hpp"
+#include "KokkosSparse_SortCrs.hpp"
 #include <Teuchos_Array.hpp>
 #include "Tpetra_Details_createMirrorView.hpp"
 #include <Kokkos_UnorderedMap.hpp>
@@ -110,6 +111,12 @@ template<typename Ordinal>
 void
 sortAndMergeCrsEntries (const Teuchos::ArrayView<size_t>& CRS_rowptr,
                         const Teuchos::ArrayView<Ordinal>& CRS_colind);
+
+template<class rowptr_view_type, class colind_view_type, class vals_view_type>
+void
+sortAndMergeCrsEntries (const rowptr_view_type& CRS_rowptr,
+		        const colind_view_type& CRS_colind,
+		        const vals_view_type& CRS_vals);
 
 /// \brief lowCommunicationMakeColMapAndReindex
 ///
@@ -715,6 +722,23 @@ sortAndMergeCrsEntries (const Teuchos::ArrayView<size_t> &CRS_rowptr,
   return sortAndMergeCrsEntries(CRS_rowptr, CRS_colind, CRS_vals);
 }
 
+template<class rowptr_view_type, class colind_view_type, class vals_view_type>
+void
+sortAndMergeCrsEntries(rowptr_view_type& CRS_rowptr,
+		       colind_view_type& CRS_colind,
+		       vals_view_type& CRS_vals)
+{
+  using execution_space = typename vals_view_type::execution_space;
+
+  auto CRS_rowptr_in = CRS_rowptr;
+  auto CRS_colind_in = CRS_colind;
+  auto CRS_vals_in   = CRS_vals;
+
+  KokkosSparse::sort_and_merge_matrix<execution_space, rowptr_view_type,
+				      colind_view_type, vals_view_type>(CRS_rowptr_in, CRS_colind_in, CRS_vals_in,
+									CRS_rowptr, CRS_colind, CRS_vals);
+}
+
 
 template <typename LocalOrdinal, typename GlobalOrdinal, typename Node>
 void
@@ -1030,7 +1054,6 @@ lowCommunicationMakeColMapAndReindexKokkos (const Teuchos::ArrayView<const size_
         const int PID = owningPIDs_view[j];
         auto outcome = RemoteGIDs_view_map.insert(GID, PID);
         if(outcome.success() && PID == -1) {
-          printf("Cannot figure out if ID is owned.\n");
           Kokkos::abort("Cannot figure out if ID is owned.\n");
         }
       }
